@@ -2,6 +2,136 @@ import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 
 const AUTH_URL = "https://functions.poehali.dev/7955341e-aee5-44bd-b659-58a4c1f3cbbc";
+const WITHDRAW_URL = "https://functions.poehali.dev/6bb4774f-9615-46b3-a44c-a018f446b4de";
+
+const WITHDRAW_METHODS = ["Банковская карта", "СБП", "USDT (TRC20)", "Qiwi", "ЮMoney"];
+
+function WithdrawModal({ user, currency, onClose, onSuccess }: {
+  user: User; currency: string; onClose: () => void; onSuccess: (newBalance: number) => void;
+}) {
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState(WITHDRAW_METHODS[0]);
+  const [requisites, setRequisites] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+
+  const RATES: Record<string, number> = { RUB: 1, USD: 0.011, EUR: 0.010 };
+  const amountRub = parseFloat(amount) / RATES[currency] || 0;
+  const balance = user.balance;
+
+  const submit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("casino_token") || "";
+      const res = await fetch(`${WITHDRAW_URL}/?action=create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: amountRub, method, requisites, currency }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Ошибка"); setLoading(false); return; }
+      setDone(data.message);
+      onSuccess(balance - amountRub);
+    } catch {
+      setError("Нет связи с сервером");
+    }
+    setLoading(false);
+  };
+
+  const placeholder: Record<string, string> = {
+    "Банковская карта": "Номер карты (16 цифр)",
+    "СБП": "Номер телефона",
+    "USDT (TRC20)": "TRC20-адрес кошелька",
+    "Qiwi": "Номер телефона",
+    "ЮMoney": "Номер кошелька",
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,0.85)" }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded p-8 animate-scale-in"
+        style={{ background: "#141414", border: "1px solid rgba(201,162,39,0.3)" }}
+        onClick={e => e.stopPropagation()}>
+
+        {done ? (
+          <div className="text-center py-4">
+            <div className="text-4xl mb-4">✓</div>
+            <h2 className="font-display text-2xl font-bold mb-3" style={{ color: "#c9a227" }}>Заявка принята</h2>
+            <p className="font-casino text-sm mb-6" style={{ color: "rgba(201,162,39,0.6)" }}>{done}</p>
+            <button className="btn-gold w-full py-3 rounded text-sm tracking-widest" onClick={onClose}>
+              Закрыть
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="text-center mb-6">
+              <Icon name="ArrowUpRight" size={28} className="mx-auto mb-2" style={{ color: "#c9a227" }} />
+              <h2 className="font-display text-3xl font-bold" style={{ color: "#c9a227" }}>Вывод средств</h2>
+              <p className="font-casino text-xs mt-1" style={{ color: "rgba(201,162,39,0.4)" }}>
+                Баланс: {balance.toLocaleString("ru-RU")} ₽ · Мин. 500 ₽
+              </p>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="font-casino text-xs tracking-widest uppercase block mb-1"
+                  style={{ color: "rgba(201,162,39,0.5)" }}>Сумма ({currency})</label>
+                <input value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder={`Мин. 500 ${currency}`} type="number"
+                  className="w-full px-4 py-3 rounded font-casino text-sm outline-none"
+                  style={{ background: "rgba(201,162,39,0.06)", border: "1px solid rgba(201,162,39,0.2)", color: "#e8d5a0" }}
+                />
+                {amountRub > 0 && currency !== "RUB" && (
+                  <p className="font-casino text-xs mt-1" style={{ color: "rgba(201,162,39,0.35)" }}>
+                    ≈ {amountRub.toFixed(0)} ₽
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="font-casino text-xs tracking-widest uppercase block mb-1"
+                  style={{ color: "rgba(201,162,39,0.5)" }}>Способ вывода</label>
+                <select value={method} onChange={e => setMethod(e.target.value)}
+                  className="w-full px-4 py-3 rounded font-casino text-sm outline-none"
+                  style={{ background: "rgba(201,162,39,0.06)", border: "1px solid rgba(201,162,39,0.2)", color: "#e8d5a0" }}>
+                  {WITHDRAW_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-casino text-xs tracking-widest uppercase block mb-1"
+                  style={{ color: "rgba(201,162,39,0.5)" }}>Реквизиты</label>
+                <input value={requisites} onChange={e => setRequisites(e.target.value)}
+                  placeholder={placeholder[method]}
+                  className="w-full px-4 py-3 rounded font-casino text-sm outline-none"
+                  style={{ background: "rgba(201,162,39,0.06)", border: "1px solid rgba(201,162,39,0.2)", color: "#e8d5a0" }}
+                />
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 px-3 py-2 rounded text-sm font-casino text-center"
+                style={{ background: "rgba(139,0,0,0.2)", border: "1px solid rgba(178,34,34,0.3)", color: "#f87171" }}>
+                {error}
+              </div>
+            )}
+
+            <button className="btn-crimson w-full py-3 rounded text-sm tracking-widest mb-2"
+              onClick={submit} disabled={loading}>
+              {loading ? "Отправка..." : "Подать заявку на вывод"}
+            </button>
+            <button className="w-full text-center font-casino text-xs py-1"
+              style={{ color: "rgba(201,162,39,0.35)" }} onClick={onClose}>
+              Отмена
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const HERO_IMAGE = "https://cdn.poehali.dev/projects/89dca4ac-9333-4669-b19a-dbcf8b70cf3e/files/c78843c2-e020-4d83-8861-584774fdbca3.jpg";
 
@@ -148,6 +278,7 @@ export default function Index() {
   const [betPlaced, setBetPlaced] = useState(false);
   const [filterCat, setFilterCat] = useState("Все");
   const [showAuth, setShowAuth] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -192,6 +323,17 @@ export default function Index() {
   return (
     <div className="min-h-screen" style={{ background: "#0d0d0d" }}>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onSuccess={handleAuthSuccess} />}
+      {showWithdraw && user && (
+        <WithdrawModal
+          user={user}
+          currency={currency}
+          onClose={() => setShowWithdraw(false)}
+          onSuccess={(newBalance) => {
+            setUser({ ...user, balance: newBalance });
+            setShowWithdraw(false);
+          }}
+        />
+      )}
 
       {/* NAVBAR */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4"
@@ -567,8 +709,8 @@ export default function Index() {
               Пополнить баланс
             </button>
             <button className="btn-crimson py-3 rounded text-sm font-semibold tracking-widest"
-              onClick={handleLogout}>
-              Выйти из аккаунта
+              onClick={() => setShowWithdraw(true)}>
+              Вывести средства
             </button>
           </div>
 
